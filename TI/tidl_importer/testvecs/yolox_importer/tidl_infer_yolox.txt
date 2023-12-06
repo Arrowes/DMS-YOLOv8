@@ -1,0 +1,12 @@
+inFileFormat    = 2
+numFrames   = 1
+netBinFile      = "testvecs/yolox_importer/output/230_tidl_net_SDK8_6.bin"
+ioConfigFile   = "testvecs/yolox_importer/output/230_tidl_io_SDK8_61.bin"
+inData  =   testvecs/yolox_importer/detection_list.txt
+outData =   testvecs/yolox_importer/infer_out/inference.bin
+inResizeMode = 0
+debugTraceLevel = 1
+writeTraceLevel = 0
+writeOutput = 1
+postProcType    = 2
+

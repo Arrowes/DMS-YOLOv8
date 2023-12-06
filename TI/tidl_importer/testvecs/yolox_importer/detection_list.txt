@@ -1,0 +1,5 @@
+testvecs/yolox_importer/indata/1.jpg
+testvecs/yolox_importer/indata/2.jpg
+testvecs/yolox_importer/indata/3.jpg
+testvecs/yolox_importer/indata/4.jpg
+testvecs/yolox_importer/indata/5.jpg
