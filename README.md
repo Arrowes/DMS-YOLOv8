@@ -15,10 +15,10 @@ tags: 总结
 项目地址：[FEY-YOLOv7](https://github.com/Arrowes/FEY-YOLOv7)
 
 此外，加入算法部署实现部分，基于实习期间对TDA4的研究：
-+ [TDA4①：SDK, TIDL, OpenVX](https://wangyujie.fun/TDA4VM/)
-+ [TDA4②：环境搭建、模型转换、Demo及Tools](https://wangyujie.fun/TDA4VM2/)
-+ [TDA4③：YOLOX的模型转换与SK板端运行](https://wangyujie.fun/TDA4VM3/)
-+ [TDA4④：部署自定义模型](https://wangyujie.fun/TDA4VM4/)
++ [TDA4①：SDK, TIDL, OpenVX](https://wangyujie.space/TDA4VM/)
++ [TDA4②：环境搭建、模型转换、Demo及Tools](https://wangyujie.space/TDA4VM2/)
++ [TDA4③：YOLOX的模型转换与SK板端运行](https://wangyujie.space/TDA4VM3/)
++ [TDA4④：部署自定义模型](https://wangyujie.space/TDA4VM4/)
 
 训练数据：[exp](https://docs.qq.com/sheet/DWmV1TnhIdlBodW1C?tab=BB08J2&u=d859dabcd86a47b181e758b366a48fdc)
 思维导图：[论文框架](https://www.zhixi.com/drawing/76e1ba59522effb3b63bde7b613518e8?page=owner&current=1)
@@ -27,7 +27,137 @@ tags: 总结
 以下为开发日志（倒叙）
 > 想法：
 合并分心与疲劳检测算法
+# 202403收尾
+## 尝试部署原红外分心行为
+```sh
+    "Danger",
+    "Drink",
+    "Phone",
+    "Safe",
+```
+失败，即使关了图像增强设置，best AP is 38.86
+## 总结部署流程
+```sh
+#运行训练：
+python -m yolox.tools.train -n yolox-s-ti-lite -d 0 -b 64 --fp16 -o --cache
+#导出：
+python3 tools/export_onnx.py --output-name yolox_s_ti_lite0.onnx -f exps/default/yolox_s_ti_lite.py -c YOLOX_outputs/yolox_s_ti_lite/best_ckpt.pth --export-det
+#onnx推理：
+python3 demo/ONNXRuntime/onnx_inference.py -m yolox_s_ti_lite0.onnx -i test.jpg -s 0.3 --input_shape 640,640 --export-det
 
+#onnx拷贝到tool/models,/examples/osrt_python改model_configs的模型路径和类别数量
+#tools根目录运行
+./scripts/yolo_compile.sh
+#模型结果在model-artifacts/模型名称
+
+#挂载SD卡，model_zoo新建模型文件夹，拷贝模型
+CEAM-YOLOv7/
+├── artifacts
+│   ├── allowedNode.txt
+│   ├── detections_tidl_io_1.bin
+│   ├── detections_tidl_net.bin
+│   └── onnxrtMetaData.txt
+├── dataset.yaml    #改
+├── model
+│   └── yolox_s_ti_lite0.onnx
+├── param.yaml  #拷贝然后改
+└── run.log
+
+#dataset.yaml
+categories:
+- supercategory: distract
+  id: 1
+  name: cup
+- supercategory: distract
+  id: 2
+  name: hand
+- supercategory: distract
+  id: 3
+  name: phone
+- supercategory: distract
+  id: 4
+  name: wheel
+
+#param.yaml（copy from model_zoo_8220）
+threshold: 0.2  #好像没用
+model_path: model/yolox_s_ti_lite0.onnx
+
+#rootfs/opt/edgeai-gst-apps/configs改yolo.yaml
+
+#SD卡上板
+sudo minicom -D /dev/ttyUSB2 -c on
+#root登录，ctrl+A Z W换行，运行
+cd /opt/edgeai-gst-apps/apps_cpp && ./bin/Release/app_edgeai ../configs/yolo.yaml
+```
+
+## 20240313重新部署
+重建sk板，edgeai tidl tool 和 edge ai yolox环境 (要注意SK版本和tools版本对应！！！)
+```sh
+git clone https://github.com/TexasInstruments/edgeai-tidl-tools.git
+git checkout 08_06_00_05
+conda create -n ti python=3.6
+...
+```
+
+混合分心与疲劳数据集, 一箭双雕，但是分心没红外
+```
+COCO_CLASSES = (
+    "closed_eye",
+    "closed_mouth",
+    "cup",
+    "hand",
+    "open_eye",
+    "open_mouth",
+    "phone",
+    "wheel",
+)
+
+categories:
+- supercategory: Fatigue
+  id: 1
+  name: closed_eye
+- supercategory: Fatigue
+  id: 2
+  name: closed_mouth
+- supercategory: Distract
+  id: 3
+  name: cup
+- supercategory: Distract
+  id: 4
+  name: hand
+- supercategory: Fatigue
+  id: 5
+  name: open_eye
+- supercategory: Fatigue
+  id: 6
+  name: open_mouth
+- supercategory: Distract
+  id: 7
+  name: phone
+- supercategory: Distract
+  id: 8
+  name: wheel
+```
+
+
+
+# 202312 分心行为算法
+## 20231207
+再换数据集试试，[DriverSep](https://universe.roboflow.com/driver-dectection/driver-s-dectection) 5k
+<img alt="图 4" src="https://raw.gitmirror.com/Arrowes/Blog/main/images/PaperLogdataSep.png" width="40%"/> 
+
+```sh
+COCO_CLASSES = (
+    "cup",
+    "hand",
+    "phone",
+    "wheel",
+)
+```
+模型|数据|备注
+---|---|---
+yolox_s_ti_lite6 |mAP=0.211:0.682 total_loss: 0.2 epoch=300|DriverSep数据集，关了数据增强效果一般
+yolox_s_ti_lite7 |mAP=0.739:0.971 total_loss: 1.8 epoch=300|开了数据增强效果拔群
 
 # 202311 训练并部署模型至SK板
 ## 20231127-30 分心行为算法训练
@@ -36,21 +166,13 @@ tags: 总结
 
 [State Farm Distracted Driver Detection](https://www.kaggle.com/competitions/state-farm-distracted-driver-detection/data) 是否要把这个开源数据集加进来？但是视角有点偏
 
-有标注好的：[Modified distracted driver dataset](https://universe.roboflow.com/deloitte-ullms/modified-distracted-driver-dataset/browse?queryText=&pageSize=50&startingIndex=50&browseQuery=true)（Mdd 5842→1w 12类）
+有标注好的：[Modified distracted driver dataset](https://universe.roboflow.com/deloitte-ullms/modified-distracted-driver-dataset/browse?queryText=&pageSize=50&startingIndex=50&browseQuery=true)（Mdd 5842→1w 12类）（不行，疑似标注方法问题，效果很差）
 ```py
 COCO_CLASSES = (
-    "Safe Driving",
-    "Texting",
-    "Talking_on_the_phone",
-    "Operating_the_Radio",
-    "Drinking",
-    "Reaching_Behind",
-    "Hair_and_Makeup",
-    "Talking_to_Passenger",
-    "Eyes_Closed",
-    "Yawning",
-    "Nodding_Off",
-    "Eyes_Open",
+    "closed_eye",
+    "closed_mouth",
+    "open_eye",
+    "open_mouth",
 )
 ```
 
@@ -72,6 +194,7 @@ yolox_s_ti_lite1 |mAP=0.61:0.94 total_loss: 2.8 epoch=179|混合数据集，crop
 yolox_s_ti_lite2 |mAP=0.554:0.928 total_loss: 9.1 epoch=80|仅旋转偏移，训练时间长占显存大，loss下降慢
 yolox_s_ti_lite3|mAP=0.559:0.915 total_loss: 7.7 epoch=200 |关闭混合精度，训了两天 用于中期部署展示⭐
 yolox_s_ti_lite4 |mAP=0.25:0.35 total_loss: 1.2 epoch=280|分心数据集3k，效果奇差，可能是少数据 或是yolox自带数据增强
+yolox_s_ti_lite4_2 |mAP=0.376:0.394 total_loss: 0.6 epoch=300|分心数据集3k，去除yolox的数据增强还是不行
 yolox_s_ti_lite5 |mAP=0.686:0.979 total_loss: 1.6 epoch=300|Mdd可见光数据集 10k 数据好看但是检测效果不行 部署效果更差
 
 <img alt="图 3" src="https://raw.gitmirror.com/Arrowes/Blog/main/images/PaperLogdata1130.png" width="90%"/> 
@@ -109,7 +232,7 @@ output.shape: (1, 1, 200, 6) [array([[[[ 2.8528796e+02,  1.7602501e+02,  3.30619
 
 配置板端文件：
 ```sh
-#运行配置文件yolo.yaml
+#运行配置文件opt/edgeai-gst-apps/yolo.yaml
 title: "DMS"
 log_level: 1
 inputs:
